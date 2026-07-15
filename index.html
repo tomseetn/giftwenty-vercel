@@ -197,6 +197,46 @@
   </div>
 </section>
 
+<!-- ===== SCREEN: 销售 Sales ===== -->
+<section id="s-sales" class="screen">
+  <div class="card">
+    <div class="lbl">🧾 日销录入 · <span class="tag" id="salesCounter">PS.1U</span></div>
+    <p class="muted" style="margin-top:0">卖出即录 —— 选渠道、数量，自动算净价，提交上云。</p>
+    <div class="modes" style="margin-top:6px">
+      <div class="mode on" id="ch-counter" onclick="setChannel('counter')"><div class="t">专柜 Counter</div></div>
+      <div class="mode" id="ch-fair" onclick="setChannel('fair')"><div class="t">促销场 Fair</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin:10px 0">
+      <span class="muted">统一折扣</span>
+      <input id="salesDisc" value="0" inputmode="numeric" style="width:56px;padding:8px;border:1px solid var(--line);border-radius:8px" onchange="renderSales()"><span class="muted">%</span>
+      <label class="muted" style="margin-left:auto;cursor:pointer">周末价 <input type="checkbox" id="salesWknd" onchange="renderSales()" style="vertical-align:-1px"></label>
+    </div>
+    <div id="salesList"></div>
+    <button class="bigbtn" style="margin-top:12px;background:#0a7d55" onclick="submitSales()">☁️ 提交销售</button>
+  </div>
+</section>
+
+<!-- ===== SCREEN: Master 汇总 ===== -->
+<section id="s-master" class="screen">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="lbl" style="margin:0">Master 汇总 · <span class="tag" id="masterCounter">PS.1U</span></div>
+      <a onclick="loadMaster()" style="color:var(--blue);font-weight:700;cursor:pointer;font-size:12px">↻ 刷新</a>
+    </div>
+    <div class="kpis" style="margin-top:10px">
+      <div class="kpi"><div class="n val" id="mNet" style="color:var(--green)">0</div><div class="k">净销售 RM</div></div>
+      <div class="kpi"><div class="n val" id="mDiff" style="color:var(--red)">0</div><div class="k">差异项</div></div>
+    </div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="min-width:600px">
+        <thead><tr><th class="l">商品</th><th>开</th><th>+DO</th><th>−退</th><th>−销</th><th>=系统</th><th>实盘</th><th>差异</th><th>净销</th></tr></thead>
+        <tbody id="masterBody"></tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:8px">＊Opening + DO − Return − Sales = Closing（系统）；Variance = 实盘 − Closing。对标客户 Master Listing。</p>
+  </div>
+</section>
+
 <!-- ===== SCREEN 2: 差异 ===== -->
 <section id="s-diff" class="screen">
   <div class="card">
@@ -247,8 +287,9 @@
 
 <div class="navb">
   <button id="nav-count" class="on" onclick="go('s-count')"><span class="ic">📋</span>盘点</button>
-  <button id="nav-hand" onclick="go('s-hand')"><span class="ic">✍️</span>手写单</button>
-  <button id="nav-diff" onclick="go('s-diff');renderDiff()"><span class="ic">⚖️</span>差异</button>
+  <button id="nav-sales" onclick="go('s-sales');renderSales()"><span class="ic">🧾</span>销售</button>
+  <button id="nav-master" onclick="go('s-master');loadMaster()"><span class="ic">📒</span>Master</button>
+  <button id="nav-hand" onclick="go('s-hand')"><span class="ic">✍️</span>手写</button>
   <button id="nav-dash" onclick="go('s-dash');renderDash()"><span class="ic">📊</span>看板</button>
 </div>
 
@@ -290,7 +331,7 @@ function go(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   $(id).classList.add('active');
   document.querySelectorAll('.navb button').forEach(b=>b.classList.remove('on'));
-  const NAVMAP={'s-count':'nav-count','s-hand':'nav-hand','s-diff':'nav-diff','s-dash':'nav-dash'};
+  const NAVMAP={'s-count':'nav-count','s-sales':'nav-sales','s-master':'nav-master','s-hand':'nav-hand','s-dash':'nav-dash'};
   NAVMAP[id] && $(NAVMAP[id]).classList.add('on');
   window.scrollTo(0,0);
 }
@@ -550,6 +591,59 @@ function renderDash(){
   });
   $("dashList").innerHTML=html;
   $("dDone").textContent=done;$("dIssues").textContent=issues;
+}
+
+// ---- 销售 Sales ----
+let salesChannel='counter', salesQty={};
+function setChannel(ch){salesChannel=ch;$("ch-counter").classList.toggle('on',ch==='counter');$("ch-fair").classList.toggle('on',ch==='fair');}
+function salesAdd(i,d){salesQty[i]=Math.max(0,(salesQty[i]||0)+d);renderSales();}
+function salesSet(i,v){salesQty[i]=Math.max(0,parseInt(v)||0);renderSales();}
+function renderSales(){
+  $("salesCounter").textContent=cur();
+  const disc=Math.max(0,Math.min(100,parseFloat($("salesDisc").value)||0));
+  const wknd=$("salesWknd").checked; let html='';
+  SKUS.forEach((s,i)=>{
+    const price=wknd?s.we:s.wd; const net=price*(1-disc/100); const q=salesQty[i]||0;
+    html+='<div class="row"><div><div class="nm">'+s.nm+'</div><div class="bc">RM '+net.toFixed(2)+' × '+q+' = RM '+(net*q).toFixed(2)+'</div></div>'+
+      '<div class="stepper"><button onclick="salesAdd('+i+',-1)">−</button>'+
+      '<input class="q" style="border:1px solid var(--line)" value="'+(q||'')+'" inputmode="numeric" onchange="salesSet('+i+',this.value)">'+
+      '<button onclick="salesAdd('+i+',1)">+</button></div></div>';
+  });
+  $("salesList").innerHTML=html;
+}
+async function submitSales(){
+  const c=cur(); const disc=Math.max(0,Math.min(100,parseFloat($("salesDisc").value)||0)); const wknd=$("salesWknd").checked;
+  const rows=SKUS.map((s,i)=>{const q=salesQty[i]||0; if(!q) return null; const price=wknd?s.we:s.wd; const net=price*(1-disc/100)*q;
+    return {barcode:s.bc,skuName:s.nm,qty:q,perPriceSen:Math.round(price*100),discountPct:disc,promoDiscSen:0,netPriceSen:Math.round(net*100)};}).filter(Boolean);
+  if(!rows.length){toast('还没录销售');return;}
+  toast('上传中…');
+  try{
+    const r=await fetch('/api/sales',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({counter:c,channel:salesChannel,rows})}).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'失败');
+    toast('✓ 已存 '+r.inserted+' 笔销售'); salesQty={}; renderSales();
+  }catch(e){ toast('销售保存失败：'+((e&&e.message)||e)); }
+}
+
+// ---- Master 汇总 ----
+async function loadMaster(){
+  const c=cur(); $("masterCounter").textContent=c;
+  $("masterBody").innerHTML='<tr><td colspan="9" class="muted">加载中…</td></tr>';
+  try{
+    const r=await fetch('/api/master?counter='+encodeURIComponent(c)).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'失败');
+    renderMaster(r.rows);
+  }catch(e){ $("masterBody").innerHTML='<tr><td colspan="9" class="muted" style="color:#c00">加载失败：'+esc((e&&e.message)||e)+'</td></tr>'; }
+}
+function renderMaster(rows){
+  let net=0,diffN=0,html='';
+  (rows||[]).forEach(r=>{
+    const v=Number(r.variance)||0; net+=(Number(r.net_sales_sen)||0)/100; if(v!==0)diffN++;
+    const cls=v<0?'short':(v>0?'over':'ok');
+    html+='<tr><td class="l">'+esc(r.sku_name||r.barcode)+'</td><td>'+(r.opening||0)+'</td><td>'+(r.do_qty||0)+'</td><td>'+(r.return_qty||0)+'</td><td>'+(r.sales_qty||0)+'</td><td>'+(r.closing_sys||0)+'</td><td>'+(r.counted||0)+'</td><td><span class="pill '+cls+'">'+(v>0?'+':'')+v+'</span></td><td class="val">'+((Number(r.net_sales_sen)||0)/100).toFixed(0)+'</td></tr>';
+  });
+  if(!html) html='<tr><td colspan="9" class="muted">云端暂无数据（先录销售 / 盘点）</td></tr>';
+  $("masterBody").innerHTML=html; $("mNet").textContent=net.toFixed(0); $("mDiff").textContent=diffN;
 }
 
 // init
