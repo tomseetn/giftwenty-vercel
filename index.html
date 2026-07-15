@@ -98,6 +98,9 @@
     .navb,.top .badge,.bigbtn,.modes,.scanbox{display:none!important}
     .screen:not(.active){display:none!important}
     .card{break-inside:avoid;box-shadow:none}
+    .no-print{display:none!important}
+    #s-master table{min-width:auto!important;font-size:11px}
+    #s-master div[style*="overflow"]{overflow:visible!important}
   }
   .paper{background:repeating-linear-gradient(#fff,#fff 27px,#dbe7f3 28px);border:1px solid #d6d6d6;border-radius:8px;
     padding:16px 14px 10px;font-family:"Segoe Script","Bradley Hand","Comic Sans MS",cursive;color:#22409a;
@@ -149,6 +152,19 @@
       <button id="scanStop" class="bigbtn navy" style="display:none" onclick="stopScan()">■ 停止扫码</button>
       <div style="text-align:center;margin-top:10px">
         <a onclick="scanOne()" style="color:var(--blue);font-weight:700;cursor:pointer;font-size:13px">无相机？点这里模拟扫一件</a>
+      </div>
+      <!-- 非标条码兜底：扫不出 → 拍标签读 item code -->
+      <div style="border-top:1px dashed var(--line);margin-top:12px;padding-top:12px">
+        <input type="file" id="labelInput" accept="image/*" capture="environment" style="display:none" onchange="onLabelPicked(event)">
+        <div class="scanbox" style="border-color:var(--navy);color:var(--navy);background:#f2f6fd;padding:16px 12px" onclick="pickLabel()">
+          <div class="big" style="font-size:32px">🏷️</div>
+          <div style="font-weight:800">扫不到？拍标签读 Item Code</div>
+          <div class="muted">非标条码 / 条码印刷缺陷 → AI 读货号兜底</div>
+        </div>
+        <div style="text-align:center;margin-top:8px">
+          <a onclick="simLabel()" style="color:var(--blue);font-weight:700;cursor:pointer;font-size:13px">没配 key？点这里用演示（读 STM 标签）</a>
+        </div>
+        <div id="labelProg"></div>
       </div>
     </div>
 
@@ -234,8 +250,12 @@
       </table>
     </div>
     <p class="muted" style="margin-top:8px">＊Opening + DO − Return − Sales = Closing（系统）；Variance = 实盘 − Closing。对标客户 Master Listing。</p>
+    <div style="display:flex;gap:8px;margin-top:8px" class="no-print">
+      <button class="bigbtn ghost" style="flex:1;padding:11px" onclick="exportMasterCsv()">⬇️ 下载 CSV</button>
+      <button class="bigbtn ghost" style="flex:1;padding:11px" onclick="window.print()">🖨️ 导出 PDF</button>
+    </div>
   </div>
-  <div class="card">
+  <div class="card no-print">
     <div class="lbl">📥 批量导入（admin · CSV）· <span class="tag" id="impCounter">PS.1U</span></div>
     <p class="muted" style="margin-top:0">每行「条码,数量」或「条码,数量,名称」。按当前专柜导入。</p>
     <div class="modes" style="margin-top:4px">
@@ -490,7 +510,51 @@ function renderOcrResult(items){
   html+='<p class="muted" style="margin-top:8px">＊可匹配的商品数量已加入当前专柜实盘。AI 只建议，请核对后再看差异。</p>';
   box.innerHTML=html; renderCount(); toast("识别完成");
 }
-function resetLoc(){const c=cur();counted[c]=[null,null,null,null,null,null];$("ocrProg").innerHTML='';renderCount();toast("已清空")}
+// ---- 非标条码兜底：拍标签读 item code（调 /api/ocr mode=label）----
+// 优先按 item code(=SKUS.bc) 精确匹配，其次回退到条码容错匹配
+function findSkuByItemCode(code){
+  const raw=(code||'').trim().toUpperCase(); if(!raw) return -1;
+  for(let i=0;i<SKUS.length;i++){ if((SKUS[i].bc||'').toUpperCase()===raw) return i; }
+  for(let i=0;i<SKUS.length;i++){ for(const cc of (SKUS[i].codes||[])){ if((cc||'').toUpperCase()===raw) return i; } }
+  return -1;
+}
+function pickLabel(){ $("labelInput").click(); }
+async function onLabelPicked(e){
+  const f=e.target.files&&e.target.files[0]; if(!f){return;}
+  const box=$("labelProg");
+  box.innerHTML='<div class="ailine"><span class="spin"></span> 读标签 item code 中…（Claude vision）</div>';
+  try{
+    const dataUrl=await resizeImage(f,1600,0.85);
+    const r=await fetch('/api/ocr',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image:dataUrl,mode:'label'})}).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'识别失败');
+    renderLabelResult(r.label);
+  }catch(err){
+    box.innerHTML='<div class="muted" style="color:#c00">识别失败：'+esc((err&&err.message)||err)+'</div>'+
+      '<div style="margin-top:8px"><a onclick="simLabel()" style="color:var(--blue);font-weight:700;cursor:pointer">改用演示数据 →</a></div>';
+  }finally{ e.target.value=''; }
+}
+function simLabel(){ renderLabelResult({itemCode:'STM-931-188Z-01',barcode:'608410057166',price:99.90,confidence:0.93,note:null}); }
+function renderLabelResult(label){
+  const box=$("labelProg");
+  if(!label || (!label.itemCode && !label.barcode)){ box.innerHTML='<div class="muted" style="margin-top:8px">没读到 item code，换个角度把标签拍清楚再试</div>'; return; }
+  const code=label.itemCode||label.barcode;
+  let idx=findSkuByItemCode(label.itemCode); if(idx<0 && label.barcode) idx=findSku(label.barcode);
+  const low=(label.confidence!=null && label.confidence<0.6);
+  let h='<div class="card" style="margin-top:12px;background:#f2f6fd;border-color:#cdddf5">';
+  h+='<div class="ailine" style="color:var(--navy)">🏷️ 标签识别结果 <span class="conf '+(low?'lo':'hi')+'">'+(low?'请核对':'高置信')+'</span></div>';
+  h+='<div class="row"><div class="bc">Item Code</div><div class="nm val">'+esc(code)+'</div></div>';
+  if(label.price!=null) h+='<div class="row"><div class="bc">读到价格</div><div class="nm val">RM '+Number(label.price).toFixed(2)+'</div></div>';
+  if(idx>=0) h+='<div class="row"><div class="bc">匹配商品</div><div class="nm">'+esc(SKUS[idx].nm)+'</div></div>';
+  else h+='<div class="row"><div class="bc">匹配商品</div><div class="nm" style="color:var(--amber)">库中无此 item code</div></div>';
+  if(label.note) h+='<div class="muted" style="color:var(--amber);margin-top:6px">'+esc(label.note)+'</div>';
+  if(idx>=0) h+='<button class="bigbtn" style="margin-top:10px" onclick="confirmLabel('+idx+')">✓ 确认记一件 +1</button>';
+  else h+='<button class="bigbtn navy" style="margin-top:10px" onclick="toast(\'此 item code 需先在系统建档，或改手动录入\')">此 item code 需先建档</button>';
+  h+='<p class="muted" style="margin-top:8px">＊扫码失败兜底：拍标签读 item code（客户主键）。AI 只建议，人确认后才 +1。</p></div>';
+  box.innerHTML=h;
+}
+function confirmLabel(idx){ const c=cur(); counted[c][idx]=(counted[c][idx]||0)+1; renderCount(); if(navigator.vibrate)navigator.vibrate(60); toast('✓ '+SKUS[idx].nm+' +1'); $("labelProg").innerHTML=''; }
+
+function resetLoc(){const c=cur();counted[c]=[null,null,null,null,null,null];$("ocrProg").innerHTML='';$("labelProg").innerHTML='';renderCount();toast("已清空")}
 
 // ---- 云端（Supabase 经 /api/counts, /api/diff）----
 async function submitCloud(){
@@ -650,7 +714,9 @@ async function loadMaster(){
     renderMaster(r.rows);
   }catch(e){ $("masterBody").innerHTML='<tr><td colspan="9" class="muted" style="color:#c00">加载失败：'+esc((e&&e.message)||e)+'</td></tr>'; }
 }
+let masterRows=[];
 function renderMaster(rows){
+  masterRows=rows||[];
   let net=0,diffN=0,html='';
   (rows||[]).forEach(r=>{
     const v=Number(r.variance)||0; net+=(Number(r.net_sales_sen)||0)/100; if(v!==0)diffN++;
@@ -684,6 +750,22 @@ async function runImport(){
     if(!r.ok) throw new Error(r.error||'失败');
     $("impMsg").textContent='✓ 已导入 '+r.imported+' 行到「'+r.type+'」'; toast('导入成功'); loadMaster();
   }catch(e){ $("impMsg").textContent='导入失败：'+esc((e&&e.message)||e); }
+}
+
+// ---- Master 导出 CSV（对标客户 Excel 列）----
+function csvEsc(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function exportMasterCsv(){
+  if(!masterRows.length){toast('先加载 Master 数据');return;}
+  const head=['Item Code','商品','Opening','DO','Return','Sales','Closing(系统)','实盘 Counted','Variance','净销 RM'];
+  const lines=[head.join(',')];
+  masterRows.forEach(r=>{
+    lines.push([r.barcode, r.sku_name, r.opening, r.do_qty, r.return_qty, r.sales_qty, r.closing_sys, r.counted, r.variance, ((Number(r.net_sales_sen)||0)/100).toFixed(2)].map(csvEsc).join(','));
+  });
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Giftwenty_Master_'+cur()+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('已下载 CSV');
 }
 
 // init
