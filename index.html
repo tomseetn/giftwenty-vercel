@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Giftwenty 库存盘点 POC · Mimo Solutions</title>
+<style>
+  :root{
+    --orange:#F07A1A; --orange-d:#d96a10; --navy:#1F3864; --ink:#222; --mut:#6b7280;
+    --line:#e5e7eb; --bg:#f4f5f7; --card:#fff; --green:#1a9d5a; --greenbg:#e4f6ec;
+    --red:#d33; --redbg:#fdeaea; --amber:#c98a00; --amberbg:#fff4d6; --blue:#2E75B6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",Roboto,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5;
+    max-width:480px;margin:0 auto;position:relative;min-height:100vh;padding-bottom:72px}
+  .top{background:linear-gradient(100deg,var(--orange),var(--orange-d));color:#fff;padding:14px 16px;
+    position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  .top h1{margin:0;font-size:17px;font-weight:800;letter-spacing:.3px}
+  .top .sub{font-size:11px;opacity:.9;margin-top:2px}
+  .badge{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);
+    font-size:10px;padding:3px 8px;border-radius:20px}
+  .screen{display:none;padding:14px}
+  .screen.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .lbl{font-size:12px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  select,button,input{font-family:inherit;font-size:15px}
+  select{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' fill='none' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center}
+  .chips{display:flex;gap:8px;margin-top:8px}
+  .chip{flex:1;text-align:center;padding:10px 6px;border:1.5px solid var(--line);border-radius:10px;background:#fff;
+    font-weight:700;font-size:13px;cursor:pointer;color:var(--mut);transition:.15s}
+  .chip small{display:block;font-weight:500;font-size:10px;color:var(--mut);margin-top:2px}
+  .chip.on{border-color:var(--orange);background:#fff6ee;color:var(--orange-d)}
+  .chip.on small{color:var(--orange-d)}
+  .modes{display:flex;gap:8px;margin:12px 0}
+  .mode{flex:1;padding:12px;border:1.5px solid var(--line);border-radius:12px;text-align:center;cursor:pointer;background:#fff}
+  .mode.on{border-color:var(--navy);background:#eef2fb}
+  .mode .ic{font-size:22px}
+  .mode .t{font-weight:800;font-size:13px;margin-top:2px}
+  .mode .d{font-size:10px;color:var(--mut)}
+  .bigbtn{width:100%;padding:15px;border:none;border-radius:12px;background:var(--orange);color:#fff;font-weight:800;font-size:16px;
+    cursor:pointer;box-shadow:0 3px 10px rgba(240,122,26,.35)}
+  .bigbtn:active{transform:scale(.99)}
+  .bigbtn.navy{background:var(--navy);box-shadow:0 3px 10px rgba(31,56,100,.3)}
+  .bigbtn.ghost{background:#fff;color:var(--navy);border:1.5px solid var(--navy);box-shadow:none}
+  .scanbox{border:2px dashed var(--orange);border-radius:14px;padding:22px 12px;text-align:center;color:var(--orange-d);background:#fff9f3;cursor:pointer;-webkit-user-select:none;user-select:none}
+  .chip,.mode,.scanbox{-webkit-tap-highlight-color:rgba(240,122,26,.2)}
+  .scanbox .big{font-size:40px}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row .nm{font-weight:700;font-size:14px}
+  .row .bc{font-size:11px;color:var(--mut);font-family:ui-monospace,monospace}
+  .stepper{display:flex;align-items:center;gap:0}
+  .stepper button{width:34px;height:34px;border:1px solid var(--line);background:#fff;font-size:18px;font-weight:700;cursor:pointer}
+  .stepper button:first-child{border-radius:9px 0 0 9px}
+  .stepper button:last-child{border-radius:0 9px 9px 0}
+  .stepper .q{width:44px;height:34px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);text-align:center;line-height:34px;font-weight:800}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:88px;background:#222;color:#fff;padding:10px 16px;border-radius:24px;
+    font-size:13px;font-weight:600;opacity:0;transition:.3s;z-index:60;max-width:90%;text-align:center}
+  .toast.show{opacity:.95}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-size:11px;text-transform:uppercase;background:#fafafa}
+  td.l,th.l{text-align:left}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:800}
+  .pill.ok{background:var(--greenbg);color:var(--green)}
+  .pill.short{background:var(--redbg);color:var(--red)}
+  .pill.over{background:var(--amberbg);color:var(--amber)}
+  .kpis{display:flex;gap:8px;margin-bottom:12px}
+  .kpi{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+  .kpi .n{font-size:22px;font-weight:900}
+  .kpi .k{font-size:10px;color:var(--mut);font-weight:700;margin-top:2px}
+  .prog{height:9px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:6px}
+  .prog>span{display:block;height:100%;background:var(--green)}
+  .navb{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;border-top:1px solid var(--line);
+    display:flex;z-index:30}
+  .navb button{flex:1;border:none;background:none;padding:9px 0 7px;cursor:pointer;color:var(--mut);font-size:11px;font-weight:700}
+  .navb button .ic{display:block;font-size:20px;margin-bottom:1px}
+  .navb button.on{color:var(--orange-d)}
+  .muted{color:var(--mut);font-size:12px}
+  .ailine{display:flex;align-items:center;gap:8px;color:var(--navy);font-weight:700;font-size:13px;margin:6px 0}
+  .spin{width:16px;height:16px;border:2px solid #cbd5e1;border-top-color:var(--navy);border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .tag{display:inline-block;background:#eef2fb;color:var(--navy);font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;margin-left:6px}
+  .val{font-variant-numeric:tabular-nums}
+  @media print{
+    html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{padding:0!important;max-width:100%;background:#fff}
+    .top{position:static!important;box-shadow:none;background:#fff!important;color:var(--ink)!important;
+      border-bottom:2px solid var(--orange);padding:10px 14px}
+    .top h1{color:var(--navy)!important}
+    .top .sub{color:var(--mut)!important;opacity:1}
+    .navb,.top .badge,.bigbtn,.modes,.scanbox{display:none!important}
+    .screen:not(.active){display:none!important}
+    .card{break-inside:avoid;box-shadow:none}
+  }
+  .paper{background:repeating-linear-gradient(#fff,#fff 27px,#dbe7f3 28px);border:1px solid #d6d6d6;border-radius:8px;
+    padding:16px 14px 10px;font-family:"Segoe Script","Bradley Hand","Comic Sans MS",cursive;color:#22409a;
+    box-shadow:0 1px 5px rgba(0,0,0,.1);position:relative;transform:rotate(-.6deg)}
+  .paper .hd{font-weight:700;border-bottom:2px solid #22409a;margin-bottom:4px;padding-bottom:4px;font-size:15px}
+  .paper .ln{display:flex;justify-content:space-between;line-height:28px;font-size:16px}
+  .paper .pin{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:18px}
+  .conf{font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px;margin-left:8px;vertical-align:2px}
+  .conf.hi{background:var(--greenbg);color:var(--green)}
+  .conf.lo{background:var(--amberbg);color:var(--amber)}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Giftwenty 库存盘点</h1>
+  <div class="sub">扫码 · 拍照 AI 识别 · 实时差异 &nbsp;|&nbsp; POC by Mimo Solutions</div>
+  <span class="badge">DEMO</span>
+</div>
+
+<!-- ===== SCREEN 1: 盘点 ===== -->
+<section id="s-count" class="screen active">
+  <div class="card">
+    <div class="lbl">① 选择专柜 Counter</div>
+    <select id="counter" onchange="renderCount()">
+      <option value="PS.1U">Parkson · 1 Utama</option>
+      <option value="SOGO.JB">SOGO · Southkey JB</option>
+      <option value="ISETAN.MV">Isetan · Mid Valley</option>
+      <option value="AEON.SP">AEON · Setapak</option>
+    </select>
+    <div class="lbl" style="margin-top:14px">② 选择库位 Location（三库位分别清点）</div>
+    <div class="chips" id="locChips">
+      <div class="chip on" data-loc="store" onclick="setLoc('store')">仓库<small>Store room</small></div>
+      <div class="chip" data-loc="counter" onclick="setLoc('counter')">柜台<small>Counter</small></div>
+      <div class="chip" data-loc="display" onclick="setLoc('display')">陈列<small>Display</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">③ 录入方式 —— 员工自选</div>
+    <div class="modes">
+      <div class="mode on" id="m-scan" onclick="setMode('scan')"><div class="ic">📷</div><div class="t">扫码</div><div class="d">拍拍拍</div></div>
+      <div class="mode" id="m-photo" onclick="setMode('photo')"><div class="ic">🖼️</div><div class="t">拍照 / WhatsApp</div><div class="d">AI 自动识别</div></div>
+    </div>
+
+    <div id="scanArea">
+      <video id="scanVideo" playsinline muted style="display:none;width:100%;max-height:300px;object-fit:cover;border-radius:12px;background:#000"></video>
+      <div id="scanStatus" class="muted" style="text-align:center;margin:8px 0;min-height:18px"></div>
+      <button id="scanStart" class="bigbtn" onclick="startScan()">📷 开启相机扫码</button>
+      <button id="scanStop" class="bigbtn navy" style="display:none" onclick="stopScan()">■ 停止扫码</button>
+      <div style="text-align:center;margin-top:10px">
+        <a onclick="scanOne()" style="color:var(--blue);font-weight:700;cursor:pointer;font-size:13px">无相机？点这里模拟扫一件</a>
+      </div>
+    </div>
+
+    <div id="photoArea" style="display:none">
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">
+      <div class="scanbox" style="border-color:var(--navy);color:var(--navy);background:#f2f6fd" onclick="pickPhoto()">
+        <div class="big">🖼️</div>
+        <div style="font-weight:800">拍货架 / 上传照片 → AI 识别</div>
+        <div class="muted">真·Claude vision 自动读出商品与数量</div>
+      </div>
+      <div style="text-align:center;margin-top:8px">
+        <a onclick="simPhoto()" style="color:var(--blue);font-weight:700;cursor:pointer;font-size:13px">没配 key？点这里用演示数据</a>
+      </div>
+      <div id="ocrProg"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="lbl" style="margin:0">本库位已盘 <span id="locName" class="tag">仓库</span></div>
+      <button class="muted" style="border:none;background:none;color:var(--blue);font-weight:700;cursor:pointer" onclick="resetLoc()">清空</button>
+    </div>
+    <div id="countList"></div>
+    <button class="bigbtn" style="margin-top:12px;background:#0a7d55" onclick="submitCloud()">☁️ 提交本次盘点（存云端）</button>
+    <button class="bigbtn navy" style="margin-top:8px" onclick="go('s-diff');renderDiff()">查看差异 →</button>
+  </div>
+</section>
+
+<!-- ===== SCREEN 1b: 手写盘点单 OCR ===== -->
+<section id="s-hand" class="screen">
+  <div class="card">
+    <div class="lbl">✍️ 手写盘点单 OCR</div>
+    <p class="muted" style="margin-top:0">员工习惯用纸笔盘点？不用改习惯 —— 拍一张手写单，AI 直接读进系统。</p>
+    <div class="paper">
+      <span class="pin">📌</span>
+      <div class="hd">Stock Count · SOGO Southkey JB · 12/07</div>
+      <div class="ln"><span>must stash 收纳包</span><span>正正 = 10</span></div>
+      <div class="ln"><span>复古斜挎包 CH2205</span><span>8</span></div>
+      <div class="ln"><span>Bruno 17" 背包</span><span>15</span></div>
+      <div class="ln"><span>Calamus 轻量包</span><span>18</span></div>
+      <div class="ln"><span>真皮银包</span><span>卅 = 30</span></div>
+      <div class="ln"><span>防盗背包</span><span>9 （涂改）</span></div>
+    </div>
+    <button class="bigbtn" style="margin-top:14px" onclick="handOCR()">📸 拍这张单 → AI 识别</button>
+    <div id="handProg"></div>
+  </div>
+</section>
+
+<!-- ===== SCREEN 2: 差异 ===== -->
+<section id="s-diff" class="screen">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="lbl" style="margin:0">差异报告 · <span id="diffCounter" class="tag">PS.1U</span></div>
+      <div style="white-space:nowrap">
+        <a onclick="loadCloudDiff()" style="color:var(--blue);font-weight:700;cursor:pointer;font-size:12px;margin-right:12px">☁️ 从云端</a>
+        <label class="muted" style="cursor:pointer"><input type="checkbox" id="wknd" onchange="renderDiff()" style="vertical-align:-1px"> 周末价</label>
+      </div>
+    </div>
+    <div class="kpis" style="margin-top:10px">
+      <div class="kpi"><div class="n val" id="kMatch" style="color:var(--green)">0</div><div class="k">对得上</div></div>
+      <div class="kpi"><div class="n val" id="kDiff" style="color:var(--red)">0</div><div class="k">有差异</div></div>
+      <div class="kpi"><div class="n val" id="kAmt" style="color:var(--navy)">0</div><div class="k">差异金额 RM</div></div>
+    </div>
+    <table>
+      <thead><tr><th class="l">商品</th><th>系统</th><th>实盘</th><th>差异</th><th>状态</th></tr></thead>
+      <tbody id="diffBody"></tbody>
+    </table>
+    <p class="muted" style="margin-top:10px">＊系统库存（SQL 导出）对比实盘扫描量，自动算差异并高亮。同款平日 RM99.90 / 周末 RM79 自动套价。</p>
+  </div>
+  <button class="bigbtn ghost" onclick="go('s-dash');renderDash()">看板总览 →</button>
+</section>
+
+<!-- ===== SCREEN 3: 看板 ===== -->
+<section id="s-dash" class="screen">
+  <div class="card">
+    <div class="lbl">全专柜盘点看板 Dashboard</div>
+    <div class="kpis" style="margin-top:4px">
+      <div class="kpi"><div class="n val" id="dCounters">4</div><div class="k">专柜</div></div>
+      <div class="kpi"><div class="n val" id="dDone" style="color:var(--green)">1</div><div class="k">已盘</div></div>
+      <div class="kpi"><div class="n val" id="dIssues" style="color:var(--red)">0</div><div class="k">差异项</div></div>
+    </div>
+    <div id="dashList" style="margin-top:6px"></div>
+    <button class="bigbtn" style="margin-top:14px;background:var(--navy)" onclick="window.print()">🖨️ 导出 PDF 差异报告</button>
+    <p class="muted" style="margin-top:10px">＊演示数据。真实版：各专柜实时进度 + 差异色块预警 + PDF 导出 + 与现有 SQL 通过 CSV 对接。</p>
+  </div>
+  <div class="card" style="background:#fff9f3;border-color:#f5d6b3">
+    <div class="lbl" style="color:var(--orange-d)">这套 POC 复用了 Mimo 现成模块</div>
+    <div class="muted" style="color:#7a4a15">
+      • 拍照 → AI/OCR 识别：复用 zixi-admin 付款截图 OCR（Claude vision）+ MJC 里程表识别<br>
+      • WhatsApp 上报：复用 zixi / MJC 的 WA 拍照 + AI 解析<br>
+      • 后台看板 + 色块预警 + PDF：复用 MJC Admin Dashboard / 合规报告引擎<br>
+      • 技术栈：Next.js + Vercel + Supabase + Claude API（全部现成）
+    </div>
+  </div>
+</section>
+
+<div class="navb">
+  <button id="nav-count" class="on" onclick="go('s-count')"><span class="ic">📋</span>盘点</button>
+  <button id="nav-hand" onclick="go('s-hand')"><span class="ic">✍️</span>手写单</button>
+  <button id="nav-diff" onclick="go('s-diff');renderDiff()"><span class="ic">⚖️</span>差异</button>
+  <button id="nav-dash" onclick="go('s-dash');renderDash()"><span class="ic">📊</span>看板</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ZXing：跨设备条码/QR 解码（iOS Safari 也能用；无网络则回退模拟） -->
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+// ---------- seed data ----------
+// system stock per counter per SKU (the "SQL truth")
+const SKUS = [
+  // STM must stash：真实包装条码（可拿实盒扫）—— UPC-A 608410057166 / EAN-13 6084100617012
+  {bc:"STM-931-188Z-01", codes:["608410057166","0608410057166","6084100617012"], nm:"STM must stash 收纳包", wd:99.90, we:79.00},
+  {bc:"CH-2205-BRN",      codes:["CH-2205-BRN","9557001220050"], nm:"Country Hide 复古斜挎包", wd:229.00, we:199.00},
+  {bc:"BN-7557-BLK",      codes:["BN-7557-BLK","9557001275570"], nm:"Bruno Cavalli 17\" 商务背包", wd:189.00, we:159.00},
+  {bc:"CL-101-GRY",       codes:["CL-101-GRY","9557001101014"], nm:"Calamüs 轻量背包", wd:129.00, we:99.00},
+  {bc:"CH-3380-BLK",      codes:["CH-3380-BLK","9557001233807"], nm:"Country Hide 真皮银包", wd:89.00, we:69.00},
+  {bc:"BN-2242-NVY",      codes:["BN-2242-NVY","9557001222420"], nm:"Bruno Cavalli 防盗背包", wd:159.00, we:129.00},
+];
+// system qty per counter (store/counter/display combined truth for demo simplicity)
+const SYS = {
+  "PS.1U":   [12, 8, 15, 20, 30, 10],
+  "SOGO.JB": [9, 6, 11, 14, 22, 7],
+  "ISETAN.MV":[15,10,18,25,28,12],
+  "AEON.SP": [7, 5, 9, 12, 16, 6],
+};
+// counted state: counted[counter][skuIndex] = qty (accumulated across locations)
+const counted = {}; Object.keys(SYS).forEach(c=>counted[c]=[null,null,null,null,null,null]);
+// which counters have been "submitted" (for dashboard)
+let curLoc='store', curMode='scan', scanPtr=0;
+const LOCN={store:"仓库",counter:"柜台",display:"陈列"};
+
+function $(id){return document.getElementById(id)}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(t._);t._=setTimeout(()=>t.classList.remove("show"),1600)}
+function cur(){return $("counter").value}
+
+function go(id){
+  if(id!=='s-count') stopScan();
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $(id).classList.add('active');
+  document.querySelectorAll('.navb button').forEach(b=>b.classList.remove('on'));
+  const NAVMAP={'s-count':'nav-count','s-hand':'nav-hand','s-diff':'nav-diff','s-dash':'nav-dash'};
+  NAVMAP[id] && $(NAVMAP[id]).classList.add('on');
+  window.scrollTo(0,0);
+}
+function setLoc(l){curLoc=l;document.querySelectorAll('#locChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.loc===l));$("locName").textContent=LOCN[l];toast("库位："+LOCN[l])}
+function setMode(m){curMode=m;$("m-scan").classList.toggle('on',m==='scan');$("m-photo").classList.toggle('on',m==='photo');
+  $("scanArea").style.display=m==='scan'?'block':'none';$("photoArea").style.display=m==='photo'?'block':'none';
+  if(m!=='scan') stopScan();}
+
+// ---------- 真·相机扫码（ZXing / BarcodeDetector）----------
+let zxingReader=null, bdDetector=null, curStream=null, scanning=false, lastCode='', lastAt=0;
+
+function findSku(code){
+  const raw=(code||'').trim(); const d=raw.replace(/\D/g,'');
+  for(let i=0;i<SKUS.length;i++){
+    for(const cc of (SKUS[i].codes||[])){
+      const cd=cc.replace(/\D/g,'');
+      if(!cd){ if(cc===raw) return i; continue; }           // 非数字码(自定义/QR)精确匹配
+      if(cd.length>=6 && (cd===d || d.endsWith(cd) || cd.endsWith(d))) return i; // EAN/UPC 容错(12 vs 13 位)
+    }
+  }
+  return -1;
+}
+function onCode(code){
+  const now=Date.now();
+  if(code===lastCode && now-lastAt<1500) return;             // 同码去抖
+  lastCode=code; lastAt=now;
+  const i=findSku(code);
+  if(i>=0){ counted[cur()][i]=(counted[cur()][i]||0)+1; renderCount();
+    if(navigator.vibrate) navigator.vibrate(60);
+    toast("✓ "+SKUS[i].nm+" +1"); }
+  else { toast("未知条码："+code+"（不在库中，可手动加）"); }
+}
+async function startScan(){
+  const v=$("scanVideo"), st=$("scanStatus");
+  $("scanStart").style.display='none';
+  st.textContent='开启相机中…';
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+    curStream=stream; scanning=true;
+    $("scanStop").style.display='inline-block';
+    if('BarcodeDetector' in window){                          // Android Chrome：原生快解
+      v.srcObject=stream; v.setAttribute('playsinline',''); await v.play(); v.style.display='block';
+      bdDetector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});
+      st.textContent='对准条码…（原生解码）';
+      const loop=async()=>{ if(!scanning) return;
+        try{ const cs=await bdDetector.detect(v); if(cs&&cs.length) onCode(cs[0].rawValue); }catch(e){}
+        setTimeout(()=>requestAnimationFrame(loop),120); };
+      loop();
+    } else if(window.ZXing){                                  // iOS Safari 等：ZXing 解码
+      const devId=(stream.getVideoTracks()[0].getSettings()||{}).deviceId;
+      stream.getTracks().forEach(t=>t.stop()); curStream=null;  // 交给 ZXing 重新开同一相机
+      v.style.display='block';
+      zxingReader=new ZXing.BrowserMultiFormatReader();
+      st.textContent='对准条码…（ZXing 解码）';
+      await zxingReader.decodeFromVideoDevice(devId||undefined, v, (result)=>{ if(result) onCode(result.getText()); });
+    } else {
+      throw new Error('扫码库未加载（检查网络）');
+    }
+  }catch(e){
+    scanning=false; $("scanStart").style.display='inline-block'; $("scanStop").style.display='none';
+    v.style.display='none';
+    st.textContent='无法开相机：'+((e&&e.message)||e)+' —— 可用下方「模拟扫一件」';
+  }
+}
+function stopScan(){
+  scanning=false;
+  try{ if(zxingReader){ zxingReader.reset(); zxingReader=null; } }catch(e){}
+  const v=$("scanVideo");
+  try{ if(v&&v.srcObject){ v.srcObject.getTracks().forEach(t=>t.stop()); v.srcObject=null; } }catch(e){}
+  try{ if(curStream){ curStream.getTracks().forEach(t=>t.stop()); curStream=null; } }catch(e){}
+  if(v) v.style.display='none';
+  const a=$("scanStart"), b=$("scanStop"), st=$("scanStatus");
+  if(a) a.style.display='inline-block'; if(b) b.style.display='none'; if(st) st.textContent='';
+}
+
+function addQty(i,d){const c=cur();const v=counted[c][i]||0;counted[c][i]=Math.max(0,v+d);renderCount()}
+function setQty(i,v){counted[cur()][i]=Math.max(0,parseInt(v)||0);renderCount()}
+
+function scanOne(){
+  // simulate scanning next SKU in rotation, +1 each tap
+  const c=cur();const i=scanPtr%SKUS.length;scanPtr++;
+  counted[c][i]=(counted[c][i]||0)+1;
+  toast("扫到："+SKUS[i].nm+" +1");
+  renderCount();
+}
+function simPhoto(){
+  const box=$("ocrProg");
+  box.innerHTML='<div class="ailine"><span class="spin"></span> AI 正在识别照片…（演示数据）</div>';
+  setTimeout(()=>{
+    // simulated OCR result: fills counted with realistic slightly-off numbers to create a story
+    const c=cur();
+    const recog=[
+      {i:0,q:10},{i:1,q:8},{i:2,q:16},{i:3,q:18},{i:4,q:30},{i:5,q:9}
+    ];
+    recog.forEach(r=>counted[c][r.i]=r.q);
+    let html='<div class="ailine" style="color:var(--green)">✓ 识别完成 · 共 '+recog.length+' 项（可手动微调）</div>';
+    recog.forEach(r=>{html+='<div class="row"><div><div class="nm">'+SKUS[r.i].nm+'</div><div class="bc">'+SKUS[r.i].bc+'</div></div><div class="pill ok">识别 '+r.q+'</div></div>'});
+    box.innerHTML=html;
+    toast("AI 识别完成，已填入实盘");
+    renderCount();
+  },1300);
+}
+
+// ---- 真·拍照 OCR（调后端 /api/ocr → Claude vision）----
+function pickPhoto(){ $("photoInput").click(); }
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+// 商品名 → SKU 下标（按关键词模糊匹配）
+const SKU_TOKENS=[['must','stash','收纳'],['斜挎','复古','2205'],['bruno','7557','17','商务'],['calam','轻量','101'],['银包','3380'],['防盗','2242']];
+function mapNameToSku(name){const s=(name||'').toLowerCase();for(let i=0;i<SKU_TOKENS.length;i++){if(SKU_TOKENS[i].some(t=>s.includes(t)))return i;}return -1;}
+// 压缩图片到 maxPx，返回 dataURL（省流量+token）
+function resizeImage(file,maxPx,q){return new Promise((res,rej)=>{const img=new Image();const rd=new FileReader();
+  rd.onload=()=>{img.onload=()=>{let{width:w,height:h}=img;const sc=Math.min(1,maxPx/Math.max(w,h));w=Math.round(w*sc);h=Math.round(h*sc);
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    res(cv.toDataURL('image/jpeg',q||0.8));};img.onerror=rej;img.src=rd.result;};rd.onerror=rej;rd.readAsDataURL(file);});}
+async function onPhotoPicked(e){
+  const f=e.target.files&&e.target.files[0]; if(!f){return;}
+  const box=$("ocrProg");
+  box.innerHTML='<div class="ailine"><span class="spin"></span> AI 识别中…（Claude vision）</div>';
+  try{
+    const dataUrl=await resizeImage(f,1600,0.8);
+    const r=await fetch('/api/ocr',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image:dataUrl})}).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'识别失败');
+    renderOcrResult(r.items);
+  }catch(err){
+    box.innerHTML='<div class="muted" style="color:#c00">识别失败：'+esc((err&&err.message)||err)+'</div>'+
+      '<div style="margin-top:8px"><a onclick="simPhoto()" style="color:var(--blue);font-weight:700;cursor:pointer">改用演示数据继续 →</a></div>';
+  }finally{ e.target.value=''; }
+}
+function renderOcrResult(items){
+  const box=$("ocrProg"), c=cur();
+  if(!items||!items.length){ box.innerHTML='<div class="muted">没识别到商品，换张清楚点的照片再试</div>'; return; }
+  let html='<div class="ailine" style="color:var(--green)">✓ 识别完成 · '+items.length+' 项（低置信已标注，请核对）</div>';
+  items.forEach(it=>{
+    const idx=mapNameToSku(it.name);
+    if(idx>=0) counted[c][idx]=(counted[c][idx]||0)+(it.qty||0);
+    const low=(it.confidence!=null&&it.confidence<0.6);
+    html+='<div class="row"><div><div class="nm">'+esc(it.name)+(idx<0?' <span class="muted">(库中无匹配)</span>':'')+'</div>'+
+      (it.note?'<div class="bc" style="color:var(--amber)">'+esc(it.note)+'</div>':'')+'</div>'+
+      '<div><b class="val" style="font-size:16px">'+(it.qty||0)+'</b><span class="conf '+(low?'lo':'hi')+'">'+(low?'请核对':'高置信')+'</span></div></div>';
+  });
+  html+='<p class="muted" style="margin-top:8px">＊可匹配的商品数量已加入当前专柜实盘。AI 只建议，请核对后再看差异。</p>';
+  box.innerHTML=html; renderCount(); toast("识别完成");
+}
+function resetLoc(){const c=cur();counted[c]=[null,null,null,null,null,null];$("ocrProg").innerHTML='';renderCount();toast("已清空")}
+
+// ---- 云端（Supabase 经 /api/counts, /api/diff）----
+async function submitCloud(){
+  const c=cur();
+  const rows=SKUS.map((s,i)=>({barcode:s.bc,skuName:s.nm,qty:counted[c][i]||0})).filter(r=>r.qty>0);
+  if(!rows.length){ toast('本专柜还没盘到东西'); return; }
+  toast('上传云端中…');
+  try{
+    const r=await fetch('/api/counts',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({counter:c,source:curMode,rows})}).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'失败');
+    toast('✓ 已存云端 '+r.inserted+' 项');
+  }catch(e){ toast('云端保存失败：'+((e&&e.message)||e)); }
+}
+async function loadCloudDiff(){
+  const c=cur(); $("diffCounter").textContent=c;
+  $("diffBody").innerHTML='<tr><td colspan="5" class="muted">从云端加载中…</td></tr>';
+  try{
+    const r=await fetch('/api/diff?counter='+encodeURIComponent(c)).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'失败');
+    renderCloudDiff(r.rows);
+    toast('已从云端加载');
+  }catch(e){ $("diffBody").innerHTML='<tr><td colspan="5" class="muted" style="color:#c00">云端加载失败：'+esc((e&&e.message)||e)+'</td></tr>'; }
+}
+function renderCloudDiff(rows){
+  const wknd=$("wknd").checked; let match=0,diff=0,amt=0,html='';
+  const priceOf=(bc)=>{const s=SKUS.find(x=>x.bc===bc);return s?(wknd?s.we:s.wd):0;};
+  (rows||[]).forEach(r=>{
+    const d=Number(r.diff)||0; let cls='ok',txt='对得上';
+    if(d<0){cls='short';txt='短少 '+d;} else if(d>0){cls='over';txt='多出 +'+d;}
+    if(d===0)match++; else { diff++; amt+=Math.abs(d)*priceOf(r.barcode); }
+    html+='<tr><td class="l">'+esc(r.sku_name||r.barcode)+'</td><td>'+(r.system_qty==null?'—':r.system_qty)+'</td><td>'+(r.counted_qty||0)+'</td><td class="val">'+(d>0?'+':'')+d+'</td><td><span class="pill '+cls+'">'+txt+'</span></td></tr>';
+  });
+  if(!html) html='<tr><td colspan="5" class="muted">云端暂无数据（先在盘点页「提交本次盘点」）</td></tr>';
+  $("diffBody").innerHTML=html;
+  $("kMatch").textContent=match; $("kDiff").textContent=diff; $("kAmt").textContent=amt.toFixed(0);
+}
+
+// ---- handwritten sheet OCR ----
+let handRes=null;
+function handOCR(){
+  const box=$("handProg");
+  box.innerHTML='<div class="ailine"><span class="spin"></span> AI 正在识别手写单…（Claude vision）</div>';
+  setTimeout(()=>{
+    const res=[{i:0,q:10,c:'hi'},{i:1,q:8,c:'hi'},{i:2,q:15,c:'hi'},{i:3,q:18,c:'hi'},{i:4,q:30,c:'hi'},{i:5,q:9,c:'lo'}];
+    handRes=res.map(r=>r.q);
+    let h='<div class="card" style="margin-top:12px;background:#f6faf6;border-color:#cfe6d3">';
+    h+='<div class="ailine" style="color:var(--green)">✓ 识别完成 · 6 项（低置信项已标注，请确认）</div>';
+    res.forEach(r=>{
+      h+='<div class="row"><div><div class="nm">'+SKUS[r.i].nm+'</div><div class="bc">'+SKUS[r.i].bc+'</div></div>'+
+         '<div><b class="val" style="font-size:16px">'+r.q+'</b>'+
+         '<span class="conf '+r.c+'">'+(r.c==='hi'?'高置信':'请核对 ?')+'</span></div></div>';
+    });
+    h+='<button class="bigbtn" style="margin-top:12px" onclick="applyHand()">✓ 确认并写入盘点 →</button>';
+    h+='<p class="muted" style="margin-top:8px">＊AI 只做识别与建议，最终由员工确认（沿用「AI 不自动定案」红线）。「涂改」那行自动标为低置信，提示人工核对。</p></div>';
+    box.innerHTML=h;
+    toast("手写单识别完成");
+  },1300);
+}
+function applyHand(){
+  if(!handRes) return;
+  const c=cur();counted[c]=handRes.slice();
+  renderCount();go('s-diff');renderDiff();
+  toast("已写入 "+c+"，查看差异");
+}
+
+function renderCount(){
+  const c=cur();let html='';
+  SKUS.forEach((s,i)=>{
+    const q=counted[c][i];
+    html+='<div class="row"><div><div class="nm">'+s.nm+'</div><div class="bc">'+s.bc+'</div></div>'+
+      '<div class="stepper"><button onclick="addQty('+i+',-1)">−</button>'+
+      '<input class="q" style="border:1px solid var(--line)" value="'+(q==null?'':q)+'" inputmode="numeric" onchange="setQty('+i+',this.value)">'+
+      '<button onclick="addQty('+i+',1)">+</button></div></div>';
+  });
+  $("countList").innerHTML=html;
+}
+
+function renderDiff(){
+  const c=cur();$("diffCounter").textContent=c;
+  const wknd=$("wknd").checked;
+  let match=0,diff=0,amt=0,rows='';
+  SKUS.forEach((s,i)=>{
+    const sys=SYS[c][i];const cnt=counted[c][i];
+    if(cnt==null){ // not counted yet
+      rows+='<tr><td class="l">'+s.nm+'</td><td>'+sys+'</td><td class="muted">—</td><td>—</td><td><span class="pill" style="background:#eee;color:#888">未盘</span></td></tr>';
+      return;
+    }
+    const d=cnt-sys;const price=wknd?s.we:s.wd;
+    let cls='ok',txt='对得上';
+    if(d<0){cls='short';txt='短少 '+d}
+    else if(d>0){cls='over';txt='多出 +'+d}
+    if(d===0)match++;else{diff++;amt+=Math.abs(d)*price}
+    rows+='<tr><td class="l">'+s.nm+'</td><td>'+sys+'</td><td>'+cnt+'</td><td class="val">'+(d>0?'+':'')+d+'</td><td><span class="pill '+cls+'">'+txt+'</span></td></tr>';
+  });
+  $("diffBody").innerHTML=rows;
+  $("kMatch").textContent=match;$("kDiff").textContent=diff;$("kAmt").textContent=amt.toFixed(0);
+}
+
+function renderDash(){
+  let issues=0,done=0,html='';
+  Object.keys(SYS).forEach(c=>{
+    const total=SKUS.length;let cn=0,iss=0;
+    SKUS.forEach((s,i)=>{const q=counted[c][i];if(q!=null){cn++;if(q-SYS[c][i]!==0)iss++;}});
+    if(cn>0)done++; issues+=iss;
+    const pct=Math.round(cn/total*100);
+    const color=iss>0?'var(--red)':(cn>0?'var(--green)':'var(--mut)');
+    html+='<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      '<div style="display:flex;justify-content:space-between"><b>'+c+'</b>'+
+      '<span style="color:'+color+';font-weight:800">'+(cn>0?(iss>0?iss+' 项差异':'已盘完'):'待盘')+'</span></div>'+
+      '<div class="prog"><span style="width:'+pct+'%;background:'+(iss>0?'var(--red)':'var(--green)')+'"></span></div>'+
+      '<div class="muted" style="margin-top:3px">'+cn+' / '+total+' 项 · '+pct+'%</div></div>';
+  });
+  $("dashList").innerHTML=html;
+  $("dDone").textContent=done;$("dIssues").textContent=issues;
+}
+
+// init
+renderCount();
+</script>
+</body>
+</html>

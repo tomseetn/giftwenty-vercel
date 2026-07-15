@@ -1,0 +1,7 @@
+{
+  "name": "giftwenty-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Giftwenty 库存盘点 — Vercel 零配置部署（静态 index.html + api/ serverless 函数）"
+}
