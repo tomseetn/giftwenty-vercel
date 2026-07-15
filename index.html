@@ -130,16 +130,20 @@
       <option value="ISETAN.MV">Isetan · Mid Valley</option>
       <option value="AEON.SP">AEON · Setapak</option>
     </select>
-    <div class="lbl" style="margin-top:14px">② 选择库位 Location（三库位分别清点）</div>
-    <div class="chips" id="locChips">
-      <div class="chip on" data-loc="store" onclick="setLoc('store')">仓库<small>Store room</small></div>
-      <div class="chip" data-loc="counter" onclick="setLoc('counter')">柜台<small>Counter</small></div>
-      <div class="chip" data-loc="display" onclick="setLoc('display')">陈列<small>Display</small></div>
+    <div class="lbl" style="margin-top:14px">② 作业类型 Task</div>
+    <div class="chips" id="taskChips">
+      <div class="chip on" data-task="count" onclick="setTask('count')">盘点<small>Stock Count</small></div>
+      <div class="chip" data-task="sales" onclick="setTask('sales')">日销<small>Daily Sales</small></div>
+    </div>
+    <div class="lbl" style="margin-top:14px">③ 渠道 Channel（Counter / Fair 分开）</div>
+    <div class="chips" id="chanChips">
+      <div class="chip on" data-chan="counter" onclick="setChan('counter')">专柜<small>Counter</small></div>
+      <div class="chip" data-chan="fair" onclick="setChan('fair')">促销场<small>Fair</small></div>
     </div>
   </div>
 
   <div class="card">
-    <div class="lbl">③ 录入方式 —— 员工自选</div>
+    <div class="lbl">④ 录入方式 —— 员工自选</div>
     <div class="modes">
       <div class="mode on" id="m-scan" onclick="setMode('scan')"><div class="ic">📷</div><div class="t">扫码</div><div class="d">拍拍拍</div></div>
       <div class="mode" id="m-photo" onclick="setMode('photo')"><div class="ic">🖼️</div><div class="t">拍照 / WhatsApp</div><div class="d">AI 自动识别</div></div>
@@ -184,12 +188,12 @@
 
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div class="lbl" style="margin:0">本库位已盘 <span id="locName" class="tag">仓库</span></div>
+      <div class="lbl" style="margin:0"><span id="taskName">本次盘点</span> · <span id="chanName" class="tag">专柜</span></div>
       <button class="muted" style="border:none;background:none;color:var(--blue);font-weight:700;cursor:pointer" onclick="resetLoc()">清空</button>
     </div>
     <div id="countList"></div>
-    <button class="bigbtn" style="margin-top:12px;background:#0a7d55" onclick="submitCloud()">☁️ 提交本次盘点（存云端）</button>
-    <button class="bigbtn navy" style="margin-top:8px" onclick="go('s-diff');renderDiff()">查看差异 →</button>
+    <button class="bigbtn" id="submitBtn" style="margin-top:12px;background:#0a7d55" onclick="submitCloud()">☁️ 提交本次盘点（存云端）</button>
+    <button class="bigbtn navy" id="diffBtn" style="margin-top:8px" onclick="go('s-diff');renderDiff()">查看差异 →</button>
   </div>
 </section>
 
@@ -351,11 +355,14 @@ const SYS = {
   "ISETAN.MV":[15,10,18,25,28,12],
   "AEON.SP": [7, 5, 9, 12, 16, 6],
 };
-// counted state: counted[counter][skuIndex] = qty (accumulated across locations)
+// counted state: counted[counter][skuIndex] = qty（盘点 Stock Count）
 const counted = {}; Object.keys(SYS).forEach(c=>counted[c]=[null,null,null,null,null,null]);
-// which counters have been "submitted" (for dashboard)
-let curLoc='store', curMode='scan', scanPtr=0;
-const LOCN={store:"仓库",counter:"柜台",display:"陈列"};
+const soldQ = {}; Object.keys(SYS).forEach(c=>soldQ[c]=[null,null,null,null,null,null]); // 日销 Daily Sales 快扫
+let curMode='scan', scanPtr=0;
+// 作业 Stock Count/Daily Sales · 渠道 Counter/Fair（2026-07-15 取代旧三库位 仓库/柜台/陈列）
+let curTask='count', curChannel='counter';
+const TASKN={count:'盘点 Stock Count',sales:'日销 Daily Sales'}, CHANN={counter:'专柜 Counter',fair:'促销场 Fair'};
+function taskArr(){ return curTask==='sales'?soldQ:counted; }   // 当前作业写入哪个数组
 
 function $(id){return document.getElementById(id)}
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(t._);t._=setTimeout(()=>t.classList.remove("show"),1600)}
@@ -370,7 +377,14 @@ function go(id){
   NAVMAP[id] && $(NAVMAP[id]).classList.add('on');
   window.scrollTo(0,0);
 }
-function setLoc(l){curLoc=l;document.querySelectorAll('#locChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.loc===l));$("locName").textContent=LOCN[l];toast("库位："+LOCN[l])}
+function setTask(t){curTask=t;document.querySelectorAll('#taskChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.task===t));renderTaskUI();renderCount();toast("作业："+TASKN[t]);}
+function setChan(ch){curChannel=ch;document.querySelectorAll('#chanChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.chan===ch));const n=$("chanName");if(n)n.textContent=(ch==='counter'?'专柜':'促销场');toast("渠道："+CHANN[ch]);}
+function renderTaskUI(){
+  const sales=curTask==='sales';
+  const tn=$("taskName"); if(tn) tn.textContent=sales?'本次日销':'本次盘点';
+  const b=$("submitBtn"); if(b) b.textContent=sales?'☁️ 提交日销（Stock Out）':'☁️ 提交本次盘点（存云端）';
+  const d=$("diffBtn"); if(d) d.style.display=sales?'none':'block';
+}
 function setMode(m){curMode=m;$("m-scan").classList.toggle('on',m==='scan');$("m-photo").classList.toggle('on',m==='photo');
   $("scanArea").style.display=m==='scan'?'block':'none';$("photoArea").style.display=m==='photo'?'block':'none';
   if(m!=='scan') stopScan();}
@@ -394,7 +408,7 @@ function onCode(code){
   if(code===lastCode && now-lastAt<1500) return;             // 同码去抖
   lastCode=code; lastAt=now;
   const i=findSku(code);
-  if(i>=0){ counted[cur()][i]=(counted[cur()][i]||0)+1; renderCount();
+  if(i>=0){ const arr=taskArr(); arr[cur()][i]=(arr[cur()][i]||0)+1; renderCount();
     if(navigator.vibrate) navigator.vibrate(60);
     toast("✓ "+SKUS[i].nm+" +1"); }
   else { toast("未知条码："+code+"（不在库中，可手动加）"); }
@@ -442,13 +456,13 @@ function stopScan(){
   if(a) a.style.display='inline-block'; if(b) b.style.display='none'; if(st) st.textContent='';
 }
 
-function addQty(i,d){const c=cur();const v=counted[c][i]||0;counted[c][i]=Math.max(0,v+d);renderCount()}
-function setQty(i,v){counted[cur()][i]=Math.max(0,parseInt(v)||0);renderCount()}
+function addQty(i,d){const arr=taskArr();const c=cur();const v=arr[c][i]||0;arr[c][i]=Math.max(0,v+d);renderCount()}
+function setQty(i,v){taskArr()[cur()][i]=Math.max(0,parseInt(v)||0);renderCount()}
 
 function scanOne(){
-  // simulate scanning next SKU in rotation, +1 each tap
-  const c=cur();const i=scanPtr%SKUS.length;scanPtr++;
-  counted[c][i]=(counted[c][i]||0)+1;
+  // simulate scanning next SKU in rotation, +1 each tap（写入当前作业：盘点 or 日销）
+  const arr=taskArr();const c=cur();const i=scanPtr%SKUS.length;scanPtr++;
+  arr[c][i]=(arr[c][i]||0)+1;
   toast("扫到："+SKUS[i].nm+" +1");
   renderCount();
 }
@@ -552,15 +566,16 @@ function renderLabelResult(label){
   h+='<p class="muted" style="margin-top:8px">＊扫码失败兜底：拍标签读 item code（客户主键）。AI 只建议，人确认后才 +1。</p></div>';
   box.innerHTML=h;
 }
-function confirmLabel(idx){ const c=cur(); counted[c][idx]=(counted[c][idx]||0)+1; renderCount(); if(navigator.vibrate)navigator.vibrate(60); toast('✓ '+SKUS[idx].nm+' +1'); $("labelProg").innerHTML=''; }
+function confirmLabel(idx){ const arr=taskArr();const c=cur(); arr[c][idx]=(arr[c][idx]||0)+1; renderCount(); if(navigator.vibrate)navigator.vibrate(60); toast('✓ '+SKUS[idx].nm+' +1'); $("labelProg").innerHTML=''; }
 
-function resetLoc(){const c=cur();counted[c]=[null,null,null,null,null,null];$("ocrProg").innerHTML='';$("labelProg").innerHTML='';renderCount();toast("已清空")}
+function resetLoc(){const c=cur();taskArr()[c]=[null,null,null,null,null,null];$("ocrProg").innerHTML='';$("labelProg").innerHTML='';renderCount();toast("已清空")}
 
 // ---- 云端（Supabase 经 /api/counts, /api/diff）----
 async function submitCloud(){
+  if(curTask==='sales') return submitDailySales();
   const c=cur();
-  const rows=SKUS.map((s,i)=>({barcode:s.bc,skuName:s.nm,qty:counted[c][i]||0})).filter(r=>r.qty>0);
-  if(!rows.length){ toast('本专柜还没盘到东西'); return; }
+  const rows=SKUS.map((s,i)=>({barcode:s.bc,skuName:s.nm,qty:counted[c][i]||0,location:curChannel})).filter(r=>r.qty>0);
+  if(!rows.length){ toast('本渠道还没盘到东西'); return; }
   toast('上传云端中…');
   try{
     const r=await fetch('/api/counts',{method:'POST',headers:{'content-type':'application/json'},
@@ -568,6 +583,20 @@ async function submitCloud(){
     if(!r.ok) throw new Error(r.error||'失败');
     toast('✓ 已存云端 '+r.inserted+' 项');
   }catch(e){ toast('云端保存失败：'+((e&&e.message)||e)); }
+}
+// 日销 Daily Sales（Stock Out）快扫提交 —— 按渠道存 /api/sales（平日价、无折扣，事后 Master 可细调）
+async function submitDailySales(){
+  const c=cur();
+  const rows=SKUS.map((s,i)=>{const q=soldQ[c][i]||0; if(!q) return null; const price=s.wd;
+    return {barcode:s.bc,skuName:s.nm,qty:q,perPriceSen:Math.round(price*100),discountPct:0,promoDiscSen:0,netPriceSen:Math.round(price*100*q),location:curChannel};}).filter(Boolean);
+  if(!rows.length){ toast('本渠道还没扫到日销'); return; }
+  toast('上传日销中…');
+  try{
+    const r=await fetch('/api/sales',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({counter:c,channel:curChannel,rows})}).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'失败');
+    toast('✓ 已存 '+r.inserted+' 笔日销'); soldQ[c]=[null,null,null,null,null,null]; renderCount();
+  }catch(e){ toast('日销保存失败：'+((e&&e.message)||e)); }
 }
 async function loadCloudDiff(){
   const c=cur(); $("diffCounter").textContent=c;
@@ -622,9 +651,9 @@ function applyHand(){
 }
 
 function renderCount(){
-  const c=cur();let html='';
+  const c=cur();const arr=taskArr();let html='';
   SKUS.forEach((s,i)=>{
-    const q=counted[c][i];
+    const q=arr[c][i];
     html+='<div class="row"><div><div class="nm">'+s.nm+'</div><div class="bc">'+s.bc+'</div></div>'+
       '<div class="stepper"><button onclick="addQty('+i+',-1)">−</button>'+
       '<input class="q" style="border:1px solid var(--line)" value="'+(q==null?'':q)+'" inputmode="numeric" onchange="setQty('+i+',this.value)">'+
@@ -769,6 +798,7 @@ function exportMasterCsv(){
 }
 
 // init
+renderTaskUI();
 renderCount();
 </script>
 </body>
