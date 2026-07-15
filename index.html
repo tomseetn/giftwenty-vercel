@@ -124,12 +124,8 @@
 <section id="s-count" class="screen active">
   <div class="card">
     <div class="lbl">① 选择专柜 Counter</div>
-    <select id="counter" onchange="renderCount()">
-      <option value="PS.1U">Parkson · 1 Utama</option>
-      <option value="SOGO.JB">SOGO · Southkey JB</option>
-      <option value="ISETAN.MV">Isetan · Mid Valley</option>
-      <option value="AEON.SP">AEON · Setapak</option>
-    </select>
+    <select id="counter" onchange="onCounter()"></select>
+    <div class="muted" id="regionNote" style="margin-top:6px"></div>
     <div class="lbl" style="margin-top:14px">② 作业类型 Task</div>
     <div class="chips" id="taskChips">
       <div class="chip on" data-task="count" onclick="setTask('count')">盘点<small>Stock Count</small></div>
@@ -339,22 +335,53 @@
 <script>
 // ---------- seed data ----------
 // system stock per counter per SKU (the "SQL truth")
+// wd/we = 西马 WM 基础价（平日/周末，SQL 出的价）；disc = 折扣档(%)，只用来 demo 东马加成两级
 const SKUS = [
   // STM must stash：真实包装条码（可拿实盒扫）—— UPC-A 608410057166 / EAN-13 6084100617012
-  {bc:"STM-931-188Z-01", codes:["608410057166","0608410057166","6084100617012"], nm:"STM must stash 收纳包", wd:99.90, we:79.00},
-  {bc:"CH-2205-BRN",      codes:["CH-2205-BRN","9557001220050"], nm:"Country Hide 复古斜挎包", wd:229.00, we:199.00},
-  {bc:"BN-7557-BLK",      codes:["BN-7557-BLK","9557001275570"], nm:"Bruno Cavalli 17\" 商务背包", wd:189.00, we:159.00},
-  {bc:"CL-101-GRY",       codes:["CL-101-GRY","9557001101014"], nm:"Calamüs 轻量背包", wd:129.00, we:99.00},
-  {bc:"CH-3380-BLK",      codes:["CH-3380-BLK","9557001233807"], nm:"Country Hide 真皮银包", wd:89.00, we:69.00},
-  {bc:"BN-2242-NVY",      codes:["BN-2242-NVY","9557001222420"], nm:"Bruno Cavalli 防盗背包", wd:159.00, we:129.00},
+  {bc:"STM-931-188Z-01", codes:["608410057166","0608410057166","6084100617012"], nm:"STM must stash 收纳包", wd:99.90, we:79.00, disc:0},
+  {bc:"CH-2205-BRN",      codes:["CH-2205-BRN","9557001220050"], nm:"Country Hide 复古斜挎包", wd:229.00, we:199.00, disc:30},
+  {bc:"BN-7557-BLK",      codes:["BN-7557-BLK","9557001275570"], nm:"Bruno Cavalli 17\" 商务背包", wd:189.00, we:159.00, disc:0},
+  {bc:"CL-101-GRY",       codes:["CL-101-GRY","9557001101014"], nm:"Calamüs 轻量背包", wd:129.00, we:99.00, disc:50},
+  {bc:"CH-3380-BLK",      codes:["CH-3380-BLK","9557001233807"], nm:"Country Hide 真皮银包", wd:89.00, we:69.00, disc:30},
+  {bc:"BN-2242-NVY",      codes:["BN-2242-NVY","9557001222420"], nm:"Bruno Cavalli 防盗背包", wd:159.00, we:129.00, disc:0},
 ];
-// system qty per counter (store/counter/display combined truth for demo simplicity)
-const SYS = {
-  "PS.1U":   [12, 8, 15, 20, 30, 10],
-  "SOGO.JB": [9, 6, 11, 14, 22, 7],
-  "ISETAN.MV":[15,10,18,25,28,12],
-  "AEON.SP": [7, 5, 9, 12, 16, 6],
-};
+// 完整 counter 清单（出自 HS 的 Time Master · 26 个）· r=region WM 西马(默认) / EM 东马(要加成)
+const COUNTERS = [
+  {c:"PS.1U",       n:"Parkson One Utama",     r:"WM"},
+  {c:"P.PAVBKJ",    n:"Parkson Pavilion BKJ",  r:"WM"},
+  {c:"P.SETAPAK",   n:"Parkson Setapak Central",r:"WM"},
+  {c:"P.ALAMANDA",  n:"Parkson Alamanda",      r:"WM"},
+  {c:"P.IOICITY",   n:"Parkson IOI City Mall", r:"WM"},
+  {c:"P.EVOBANGI",  n:"Parkson EVO Bangi",     r:"WM"},
+  {c:"P.KLANG",     n:"Parkson Klang Parade",  r:"WM"},
+  {c:"P.SCM",       n:"Parkson SCM (Setia City)",r:"WM"},
+  {c:"P.SWPYRAMID", n:"Parkson Sunway Pyramid",r:"WM"},
+  {c:"P.SWVELOCITY",n:"Parkson Sunway Velocity",r:"WM"},
+  {c:"P.GURNEY",    n:"Parkson Gurney",        r:"WM"},
+  {c:"P.SWCARNIVAL",n:"Parkson Sunway Carnival",r:"WM"},
+  {c:"P.AMAN",      n:"Parkson Aman Central",  r:"WM"},
+  {c:"P.MAHKOTA",   n:"Parkson Mahkota Parade",r:"WM"},
+  {c:"P.PARADIGM",  n:"Parkson Paradigm Mall", r:"WM"},
+  {c:"P.VELOCITY",  n:"Parkson Velocity",      r:"WM"},
+  {c:"SOGO.KL",     n:"Sogo KL",               r:"WM"},
+  {c:"SOGO.ICITY",  n:"Sogo iCity",            r:"WM"},
+  {c:"SOGO.JB",     n:"Sogo Southkey (JB)",    r:"WM"},
+  // ── 东马 EM（Sabah/Sarawak，自动加成）──
+  {c:"P.1BORNEO",   n:"Parkson 1 Borneo (KK)", r:"EM"},
+  {c:"P.IMAGO",     n:"Parkson Imago Parade (KK)",r:"EM"},
+  {c:"P.MERDEKA",   n:"Parkson Plaza Merdeka (Kuching)",r:"EM"},
+  {c:"P.SUMMER",    n:"Parkson Summer Mall (Kuching)",r:"EM"},
+  {c:"P.MIRI",      n:"Parkson Miri",          r:"EM"},
+  {c:"P.SIBU",      n:"Parkson Sibu",          r:"EM"},
+  {c:"P.BINTULU",   n:"Parkson The Spring Bintulu",r:"EM"},
+];
+function counterMeta(c){ c=c||cur(); return COUNTERS.find(x=>x.c===c)||{c:c,n:c,r:"WM"}; }
+function regionOf(c){ return counterMeta(c).r; }
+function emAdd(s){ const d=s.disc||0; return d>=50?10:(d>=30?5:0); }   // 东马加成：30%档+5、≥50%档+10、非折扣+0
+function unitPrice(s,weekend){ const base=weekend?s.we:s.wd; return base + (regionOf()==="EM"?emAdd(s):0); }  // 默认 WM 基础价，东马才加成
+// system qty per counter（SQL 真相；仅 2 个 demo counter 有种子库存，其余空）
+const DEMO_SYS=[12,8,15,20,30,10];
+const SYS = {}; COUNTERS.forEach(x=>{ SYS[x.c] = (x.c==="PS.1U"||x.c==="SOGO.KL") ? DEMO_SYS.slice() : [0,0,0,0,0,0]; });
 // counted state: counted[counter][skuIndex] = qty（盘点 Stock Count）
 const counted = {}; Object.keys(SYS).forEach(c=>counted[c]=[null,null,null,null,null,null]);
 const soldQ = {}; Object.keys(SYS).forEach(c=>soldQ[c]=[null,null,null,null,null,null]); // 日销 Daily Sales 快扫
@@ -379,6 +406,14 @@ function go(id){
 }
 function setTask(t){curTask=t;document.querySelectorAll('#taskChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.task===t));renderTaskUI();renderCount();toast("作业："+TASKN[t]);}
 function setChan(ch){curChannel=ch;document.querySelectorAll('#chanChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.chan===ch));const n=$("chanName");if(n)n.textContent=(ch==='counter'?'专柜':'促销场');toast("渠道："+CHANN[ch]);}
+// 切换专柜 → 更新价区提示（默认 WM；东马 EM 自动加成）+ 重绘
+function onCounter(){
+  const m=counterMeta(); const rn=$("regionNote");
+  if(rn) rn.innerHTML = (m.r==='EM')
+    ? '📍 '+esc(m.n)+' · <b style="color:var(--orange-d)">东马 EM · 自动加成（折扣30%档+RM5、≥50%档+RM10）</b>'
+    : '📍 '+esc(m.n)+' · <b style="color:var(--green)">西马 WM · 系统默认价（不加成）</b>';
+  renderCount();
+}
 function renderTaskUI(){
   const sales=curTask==='sales';
   const tn=$("taskName"); if(tn) tn.textContent=sales?'本次日销':'本次盘点';
@@ -587,7 +622,7 @@ async function submitCloud(){
 // 日销 Daily Sales（Stock Out）快扫提交 —— 按渠道存 /api/sales（平日价、无折扣，事后 Master 可细调）
 async function submitDailySales(){
   const c=cur();
-  const rows=SKUS.map((s,i)=>{const q=soldQ[c][i]||0; if(!q) return null; const price=s.wd;
+  const rows=SKUS.map((s,i)=>{const q=soldQ[c][i]||0; if(!q) return null; const price=unitPrice(s,false);
     return {barcode:s.bc,skuName:s.nm,qty:q,perPriceSen:Math.round(price*100),discountPct:0,promoDiscSen:0,netPriceSen:Math.round(price*100*q),location:curChannel};}).filter(Boolean);
   if(!rows.length){ toast('本渠道还没扫到日销'); return; }
   toast('上传日销中…');
@@ -610,7 +645,7 @@ async function loadCloudDiff(){
 }
 function renderCloudDiff(rows){
   const wknd=$("wknd").checked; let match=0,diff=0,amt=0,html='';
-  const priceOf=(bc)=>{const s=SKUS.find(x=>x.bc===bc);return s?(wknd?s.we:s.wd):0;};
+  const priceOf=(bc)=>{const s=SKUS.find(x=>x.bc===bc);return s?unitPrice(s,wknd):0;};
   (rows||[]).forEach(r=>{
     const d=Number(r.diff)||0; let cls='ok',txt='对得上';
     if(d<0){cls='short';txt='短少 '+d;} else if(d>0){cls='over';txt='多出 +'+d;}
@@ -672,7 +707,7 @@ function renderDiff(){
       rows+='<tr><td class="l">'+s.nm+'</td><td>'+sys+'</td><td class="muted">—</td><td>—</td><td><span class="pill" style="background:#eee;color:#888">未盘</span></td></tr>';
       return;
     }
-    const d=cnt-sys;const price=wknd?s.we:s.wd;
+    const d=cnt-sys;const price=unitPrice(s,wknd);
     let cls='ok',txt='对得上';
     if(d<0){cls='short';txt='短少 '+d}
     else if(d>0){cls='over';txt='多出 +'+d}
@@ -698,7 +733,7 @@ function renderDash(){
       '<div class="muted" style="margin-top:3px">'+cn+' / '+total+' 项 · '+pct+'%</div></div>';
   });
   $("dashList").innerHTML=html;
-  $("dDone").textContent=done;$("dIssues").textContent=issues;
+  $("dCounters").textContent=Object.keys(SYS).length;$("dDone").textContent=done;$("dIssues").textContent=issues;
 }
 
 // ---- 销售 Sales ----
@@ -711,7 +746,7 @@ function renderSales(){
   const disc=Math.max(0,Math.min(100,parseFloat($("salesDisc").value)||0));
   const wknd=$("salesWknd").checked; let html='';
   SKUS.forEach((s,i)=>{
-    const price=wknd?s.we:s.wd; const net=price*(1-disc/100); const q=salesQty[i]||0;
+    const price=unitPrice(s,wknd); const net=price*(1-disc/100); const q=salesQty[i]||0;
     html+='<div class="row"><div><div class="nm">'+s.nm+'</div><div class="bc">RM '+net.toFixed(2)+' × '+q+' = RM '+(net*q).toFixed(2)+'</div></div>'+
       '<div class="stepper"><button onclick="salesAdd('+i+',-1)">−</button>'+
       '<input class="q" style="border:1px solid var(--line)" value="'+(q||'')+'" inputmode="numeric" onchange="salesSet('+i+',this.value)">'+
@@ -721,7 +756,7 @@ function renderSales(){
 }
 async function submitSales(){
   const c=cur(); const disc=Math.max(0,Math.min(100,parseFloat($("salesDisc").value)||0)); const wknd=$("salesWknd").checked;
-  const rows=SKUS.map((s,i)=>{const q=salesQty[i]||0; if(!q) return null; const price=wknd?s.we:s.wd; const net=price*(1-disc/100)*q;
+  const rows=SKUS.map((s,i)=>{const q=salesQty[i]||0; if(!q) return null; const price=unitPrice(s,wknd); const net=price*(1-disc/100)*q;
     return {barcode:s.bc,skuName:s.nm,qty:q,perPriceSen:Math.round(price*100),discountPct:disc,promoDiscSen:0,netPriceSen:Math.round(net*100)};}).filter(Boolean);
   if(!rows.length){toast('还没录销售');return;}
   toast('上传中…');
@@ -797,9 +832,13 @@ function exportMasterCsv(){
   toast('已下载 CSV');
 }
 
-// init
+// init —— 生成真 counter 下拉（东马标 🌏EM）
+(function initCounters(){
+  const sel=$("counter"); if(!sel) return;
+  COUNTERS.forEach(x=>{ const o=document.createElement('option'); o.value=x.c; o.textContent=x.n+(x.r==='EM'?'  🌏EM':''); sel.appendChild(o); });
+})();
 renderTaskUI();
-renderCount();
+onCounter();   // 设初始价区提示 + renderCount
 </script>
 </body>
 </html>
