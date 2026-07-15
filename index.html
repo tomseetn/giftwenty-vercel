@@ -235,6 +235,21 @@
     </div>
     <p class="muted" style="margin-top:8px">＊Opening + DO − Return − Sales = Closing（系统）；Variance = 实盘 − Closing。对标客户 Master Listing。</p>
   </div>
+  <div class="card">
+    <div class="lbl">📥 批量导入（admin · CSV）· <span class="tag" id="impCounter">PS.1U</span></div>
+    <p class="muted" style="margin-top:0">每行「条码,数量」或「条码,数量,名称」。按当前专柜导入。</p>
+    <div class="modes" style="margin-top:4px">
+      <div class="mode on" id="imp-opening" onclick="setImpType('opening')"><div class="t">Opening 期初</div></div>
+      <div class="mode" id="imp-do" onclick="setImpType('do')"><div class="t">DO 到货</div></div>
+      <div class="mode" id="imp-return" onclick="setImpType('return')"><div class="t">Return 退货</div></div>
+    </div>
+    <textarea id="impText" placeholder="STM-931-188Z-01,12&#10;CH-2205-BRN,8" style="width:100%;height:88px;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px;font-family:ui-monospace,monospace;font-size:12px"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <input type="file" id="impFile" accept=".csv,text/csv" onchange="impLoadFile(event)" style="font-size:12px">
+      <button class="bigbtn" style="margin-left:auto;width:auto;padding:11px 20px" onclick="runImport()">导入</button>
+    </div>
+    <div id="impMsg" class="muted" style="margin-top:6px"></div>
+  </div>
 </section>
 
 <!-- ===== SCREEN 2: 差异 ===== -->
@@ -627,7 +642,7 @@ async function submitSales(){
 
 // ---- Master 汇总 ----
 async function loadMaster(){
-  const c=cur(); $("masterCounter").textContent=c;
+  const c=cur(); $("masterCounter").textContent=c; const ic=$("impCounter"); if(ic) ic.textContent=c;
   $("masterBody").innerHTML='<tr><td colspan="9" class="muted">加载中…</td></tr>';
   try{
     const r=await fetch('/api/master?counter='+encodeURIComponent(c)).then(x=>x.json());
@@ -644,6 +659,31 @@ function renderMaster(rows){
   });
   if(!html) html='<tr><td colspan="9" class="muted">云端暂无数据（先录销售 / 盘点）</td></tr>';
   $("masterBody").innerHTML=html; $("mNet").textContent=net.toFixed(0); $("mDiff").textContent=diffN;
+}
+
+// ---- 批量导入 Import (Opening/DO/Return) ----
+let impType='opening';
+function setImpType(t){impType=t;['opening','do','return'].forEach(x=>$("imp-"+x).classList.toggle('on',x===t));}
+function impLoadFile(e){const f=e.target.files&&e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{$("impText").value=String(rd.result);};rd.readAsText(f);e.target.value='';}
+function parseCsv(txt){
+  return (txt||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
+    const p=l.split(',').map(s=>s.trim());
+    if(!p[0]) return null;
+    const qty=parseInt(p[1]);
+    if(!Number.isFinite(qty)) return null;               // 跳过表头/无数量行
+    return {barcode:p[0], qty:qty, skuName:p[2]||null};
+  }).filter(Boolean);
+}
+async function runImport(){
+  const c=cur(); const rows=parseCsv($("impText").value);
+  if(!rows.length){$("impMsg").textContent='没有有效行（格式：条码,数量）';return;}
+  $("impMsg").textContent='导入中…';
+  try{
+    const r=await fetch('/api/import',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({type:impType,counter:c,rows})}).then(x=>x.json());
+    if(!r.ok) throw new Error(r.error||'失败');
+    $("impMsg").textContent='✓ 已导入 '+r.imported+' 行到「'+r.type+'」'; toast('导入成功'); loadMaster();
+  }catch(e){ $("impMsg").textContent='导入失败：'+esc((e&&e.message)||e); }
 }
 
 // init
